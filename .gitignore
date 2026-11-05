@@ -1,0 +1,20 @@
+# Secrets: real values live only in .env, never in git (.env.example is the committed template)
+.env
+.env.*
+!.env.example
+
+# n8n local state (database, encrypted credentials, owner account), if ever bind-mounted here
+n8n_data/
+
+# Personal working plan: kept locally only, not part of the submission
+docs/PLAN.md
+
+# Per-request records are regenerated on every run; output/arcvault_output.json is the deliverable
+output/records/*.json
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+*.log
