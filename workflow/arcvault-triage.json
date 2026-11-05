@@ -1,0 +1,235 @@
+{
+  "id": "ArcVaultTriage01",
+  "name": "ArcVault Intake & Triage",
+  "nodes": [
+    {
+      "id": "a1f0c2d4-0001-4c1e-9a01-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "7d3c2b9e-5f1a-4e8b-9c6d-0a1b2c3d4e5f",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "arcvault-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "a1f0c2d4-0002-4c1e-9a01-000000000002",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// Normalize Input: runs once per item (one webhook request = one item).\n// Validates the payload, cleans the text and stamps an ID + receive time.\n// Invalid requests are flagged (valid=false) so the \"Valid?\" node can answer 400 instead of creating a record.\n// 'crypto' must be allow-listed via NODE_FUNCTION_ALLOW_BUILTIN (see docker-compose.yml).\nconst { randomUUID } = require('crypto');\n\nconst body = ($json.body && typeof $json.body === 'object') ? $json.body : {};\n\nconst message = typeof body.message === 'string'\n  ? body.message.replace(/\\r\\n?/g, '\\n').trim()\n  : '';\n\nif (!message) {\n  return { json: { valid: false, error: \"Field 'message' is required and must be a non-empty string.\" } };\n}\n\nconst source = typeof body.source === 'string' && body.source.trim() ? body.source.trim() : 'Unknown';\n\nreturn {\n  json: {\n    valid: true,\n    request_id: randomUUID(),\n    received_at: new Date().toISOString(), // always UTC\n    source,\n    message,\n  },\n};\n"
+      }
+    },
+    {
+      "id": "a1f0c2d4-0003-4c1e-9a01-000000000003",
+      "name": "Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c0a1b2c3-0001-4d5e-8f90-000000000001",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a1f0c2d4-0004-4c1e-9a01-000000000004",
+      "name": "Build Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -100
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// Build Record: runs once per item.\n// SKELETON STUB (Task 4): fixes the final record shape now; the LLM, routing and summary steps fill it in Tasks 5-7.\nconst n = $json;\n\nreturn {\n  json: {\n    request_id: n.request_id,\n    received_at: n.received_at,\n    source: n.source,\n    raw_message: n.message,\n    category: null,\n    secondary_category: null,\n    priority: null,\n    confidence: null,\n    core_issue: null,\n    identifiers: { account_ids: [], invoice_numbers: [], error_codes: [], urls: [], other: [] },\n    amounts: { billed: null, expected: null, currency: null },\n    urgency: { level: null, signals: [] },\n    impact_scope: null,\n    suggested_queue: null,\n    destination_queue: null,\n    escalated: null,\n    escalation_reasons: [],\n    summary: null,\n    model: null,\n    prompt_version: null,\n    processed_at: new Date().toISOString(),\n  },\n};\n"
+      }
+    },
+    {
+      "id": "a1f0c2d4-0005-4c1e-9a01-000000000005",
+      "name": "Convert to File",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        -100
+      ],
+      "parameters": {
+        "operation": "toJson",
+        "mode": "each",
+        "options": {
+          "format": true,
+          "fileName": "={{ $json.request_id }}.json"
+        }
+      }
+    },
+    {
+      "id": "a1f0c2d4-0006-4c1e-9a01-000000000006",
+      "name": "Write Record File",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        -100
+      ],
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/files/output/records/{{ $('Build Record').item.json.request_id }}.json",
+        "dataPropertyName": "data",
+        "options": {}
+      }
+    },
+    {
+      "id": "a1f0c2d4-0007-4c1e-9a01-000000000007",
+      "name": "Respond with Record",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1320,
+        -100
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $('Build Record').item.json }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "a1f0c2d4-0008-4c1e-9a01-000000000008",
+      "name": "Respond 400 Invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        660,
+        120
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"error\": $json.error } }}",
+        "options": {
+          "responseCode": 400
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid?": {
+      "main": [
+        [
+          {
+            "node": "Build Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400 Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Record": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Write Record File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Record File": {
+      "main": [
+        [
+          {
+            "node": "Respond with Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false
+}
