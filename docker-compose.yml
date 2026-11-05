@@ -1,0 +1,22 @@
+services:
+  n8n:
+    # Pinned for reproducibility: the exported workflow was built and tested on this version.
+    image: docker.n8n.io/n8nio/n8n:2.46.6
+    container_name: arcvault-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # Display timezone for the n8n UI / schedules. Record timestamps are stored as ISO-8601 UTC regardless.
+      - GENERIC_TIMEZONE=Asia/Beirut
+      - TZ=Asia/Beirut
+      # File nodes may only read/write under /files (least privilege; keeps them away from n8n's own data).
+      - N8N_RESTRICT_FILE_ACCESS_TO=/files
+    volumes:
+      # n8n state: workflows, executions, encrypted credentials, encryption key. Named volume managed by Docker.
+      - n8n_data:/home/node/.n8n
+      # Project output folder, so records written by the workflow appear in ./output on the host.
+      - ./output:/files/output
+
+volumes:
+  n8n_data:
