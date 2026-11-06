@@ -1,0 +1,38 @@
+[
+  {
+    "id": 101,
+    "source": "Email",
+    "message": "Since this morning none of our 40 staff can upload documents. Every upload fails with error 500, and it's blocking our month-end close.",
+    "tests": "Holdout. Organization-wide failure described without the word 'outage': must still escalate (Incident/Outage, or a Bug Report with organization-wide impact).",
+    "expected": {
+      "category": ["Incident/Outage", "Bug Report"],
+      "priority": "High",
+      "destination_queue": "Escalation – Human Review",
+      "escalated": true
+    }
+  },
+  {
+    "id": 102,
+    "source": "Web Form",
+    "message": "Could you add a dark mode to the mobile app? Our field team works night shifts and the bright screen is hard on the eyes.",
+    "tests": "Holdout. Plain feature request with a business reason; nothing broken.",
+    "expected": {
+      "category": "Feature Request",
+      "priority": ["Low", "Medium"],
+      "destination_queue": "Product",
+      "escalated": false
+    }
+  },
+  {
+    "id": 103,
+    "source": "Support Portal",
+    "message": "We were billed twice for October: two separate charges of $2,150 on invoices #10391 and #10392. Please refund the duplicate.",
+    "tests": "Holdout. Duplicate charge: a $2,150 billing error with no 'billed vs expected' pair. In the spirit of the brief ('billing error > $500') it should escalate.",
+    "expected": {
+      "category": "Billing Issue",
+      "priority": null,
+      "destination_queue": "Escalation – Human Review",
+      "escalated": true
+    }
+  }
+]
