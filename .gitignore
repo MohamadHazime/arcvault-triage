@@ -1,7 +1,6 @@
-# Secrets: real values live only in .env, never in git (.env.example is the committed template)
+# Secrets never go in git. The Groq key lives in n8n's encrypted credential store; .env is ignored as a safeguard.
 .env
 .env.*
-!.env.example
 
 # n8n local state (database, encrypted credentials, owner account), if ever bind-mounted here
 n8n_data/
