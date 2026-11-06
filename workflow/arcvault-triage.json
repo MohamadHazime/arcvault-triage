@@ -131,8 +131,8 @@
       }
     },
     {
-      "id": "a1f0c2d4-0004-4c1e-9a01-000000000004",
-      "name": "Build Record",
+      "id": "a1f0c2d4-0012-4c1e-9a01-000000000012",
+      "name": "Route & Escalate",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -142,7 +142,22 @@
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
-        "jsCode": "// Build Record: runs once per item. Assembles the final output record (the deliverable schema).\n// Task 5: classification + extraction come from \"Validate LLM Output\".\n// Still stubbed: routing/escalation (Task 6) and the team summary (Task 7).\nconst n = $json;\n\nreturn {\n  json: {\n    request_id: n.request_id,\n    received_at: n.received_at,\n    source: n.source,\n    raw_message: n.message,\n    category: n.category,\n    secondary_category: n.secondary_category,\n    category_rationale: n.category_rationale,\n    priority: n.priority,\n    confidence: n.confidence,\n    core_issue: n.core_issue,\n    identifiers: n.identifiers,\n    amounts: n.amounts,\n    urgency: n.urgency,\n    impact_scope: n.impact_scope,\n    suggested_queue: null,\n    destination_queue: null,\n    escalated: null,\n    escalation_reasons: [],\n    summary: null,\n    checks: {\n      llm_valid: n.llm_valid,\n      llm_error: n.llm_error,\n      injection_suspected: n.injection_suspected,\n      warnings: n.llm_warnings,\n    },\n    model: n.model,\n    prompt_version: n.prompt_version,\n    llm_usage: n.llm_usage,\n    processed_at: new Date().toISOString(),\n  },\n};\n"
+        "jsCode": "// Route & Escalate: runs once per item. Deterministic code, no LLM.\n// 1) Maps the category to the team's standard queue (suggested_queue).\n// 2) Applies escalation rules; if any fires, the request goes to the human-review queue instead (destination_queue),\n//    and each rule that fired adds one readable reason. suggested_queue is kept so the reviewer knows the normal owner.\nconst r = $json;\n\nconst ESCALATION_QUEUE = 'Escalation – Human Review';\nconst ROUTES = {\n  'Bug Report': 'Engineering',\n  'Incident/Outage': 'Engineering (On-call)',\n  'Feature Request': 'Product',\n  'Billing Issue': 'Billing',\n  'Technical Question': 'Technical Support',\n};\nconst CONFIDENCE_THRESHOLD = 0.7;\nconst BILLING_GAP_THRESHOLD = 500;\n// Keyword safety net on the raw text, independent of the LLM.\nconst KEYWORDS = [\n  /\\boutages?\\b/i,\n  /\\bdown for (?:all|multiple|many|every(?:one|body))\\b/i,\n  /\\ball (?:of (?:our|the) )?users\\b/i,\n  /\\bmultiple users\\b/i,\n  /\\bdata loss\\b/i,\n  /\\b(?:security |data )?breach(?:ed)?\\b/i,\n];\n\nconst money = (n, cur) => `${cur === 'USD' || !cur ? '$' : cur + ' '}${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;\n\nconst reasons = [];\nconst suggested = r.llm_valid ? (ROUTES[r.category] ?? null) : null;\n\n// Rule 1: the LLM call or its output failed validation -> a human must classify it.\nif (!r.llm_valid) reasons.push(`Automatic classification failed (${r.llm_error}); needs manual triage`);\n\n// Rule 2: unknown category (defensive; strict schema should prevent it).\nif (r.llm_valid && !suggested) reasons.push(`No routing rule for category \"${r.category}\"`);\n\n// Rule 3: low confidence (the brief's < 70% rule; also the low-confidence routing fallback).\nif (r.llm_valid && r.confidence < CONFIDENCE_THRESHOLD) {\n  reasons.push(`Low classification confidence (${r.confidence.toFixed(2)} < ${CONFIDENCE_THRESHOLD.toFixed(2)})`);\n}\n\n// Rule 4: outage / wide impact. Scope only signals an outage when something is broken (a bug), so it is\n// not applied to billing, questions or feature requests.\nif (r.category === 'Incident/Outage') reasons.push('Classified as Incident/Outage');\nif (r.category === 'Bug Report' && ['multiple_users', 'organization'].includes(r.impact_scope)) {\n  reasons.push(`Bug affects ${r.impact_scope === 'organization' ? 'a whole organization' : 'multiple users'} (treated as a potential incident)`);\n}\n\n// Rule 5: escalation keywords in the customer's own words.\nconst hits = [...new Set(KEYWORDS.map((re) => (r.message.match(re) || [])[0]).filter(Boolean).map((s) => s.toLowerCase()))];\nif (hits.length) reasons.push(`Escalation keyword${hits.length > 1 ? 's' : ''} in message: ${hits.map((h) => `\"${h}\"`).join(', ')}`);\n\n// Rule 6: billing error > $500, computed here from the extracted amounts (the LLM does not judge the threshold).\nlet difference = null;\nif (typeof r.amounts?.billed === 'number' && typeof r.amounts?.expected === 'number') {\n  difference = Math.round(Math.abs(r.amounts.billed - r.amounts.expected) * 100) / 100;\n  if (difference > BILLING_GAP_THRESHOLD) {\n    const cur = r.amounts.currency;\n    reasons.push(`Billing discrepancy of ${money(difference, cur)} exceeds ${money(BILLING_GAP_THRESHOLD, cur)} (billed ${money(r.amounts.billed, cur)} vs expected ${money(r.amounts.expected, cur)})`);\n  }\n}\n\n// Rule 7: suspected prompt injection is a security event worth a human look.\nif (r.injection_suspected) reasons.push('Message contains instructions aimed at the triage system (possible prompt injection)');\n\nconst escalated = reasons.length > 0;\n\nreturn {\n  json: {\n    ...r,\n    amounts: { ...r.amounts, difference },\n    suggested_queue: suggested,\n    destination_queue: escalated ? ESCALATION_QUEUE : suggested,\n    escalated,\n    escalation_reasons: reasons,\n  },\n};\n"
+      }
+    },
+    {
+      "id": "a1f0c2d4-0004-4c1e-9a01-000000000004",
+      "name": "Build Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -100
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// Build Record: runs once per item. Assembles the final output record (the deliverable schema).\n// Classification/extraction come from \"Validate LLM Output\", routing from \"Route & Escalate\".\n// Still stubbed: the team summary (Task 7).\nconst n = $json;\n\nreturn {\n  json: {\n    request_id: n.request_id,\n    received_at: n.received_at,\n    source: n.source,\n    raw_message: n.message,\n    category: n.category,\n    secondary_category: n.secondary_category,\n    category_rationale: n.category_rationale,\n    priority: n.priority,\n    confidence: n.confidence,\n    core_issue: n.core_issue,\n    identifiers: n.identifiers,\n    amounts: n.amounts,\n    urgency: n.urgency,\n    impact_scope: n.impact_scope,\n    suggested_queue: n.suggested_queue,\n    destination_queue: n.destination_queue,\n    escalated: n.escalated,\n    escalation_reasons: n.escalation_reasons,\n    summary: null,\n    checks: {\n      llm_valid: n.llm_valid,\n      llm_error: n.llm_error,\n      injection_suspected: n.injection_suspected,\n      warnings: n.llm_warnings,\n    },\n    model: n.model,\n    prompt_version: n.prompt_version,\n    llm_usage: n.llm_usage,\n    processed_at: new Date().toISOString(),\n  },\n};\n"
       }
     },
     {
@@ -151,7 +166,7 @@
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
       "position": [
-        1540,
+        1760,
         -100
       ],
       "parameters": {
@@ -169,7 +184,7 @@
       "type": "n8n-nodes-base.readWriteFile",
       "typeVersion": 1,
       "position": [
-        1760,
+        1980,
         -100
       ],
       "parameters": {
@@ -185,7 +200,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        1980,
+        2200,
         -100
       ],
       "parameters": {
@@ -203,7 +218,7 @@
       "typeVersion": 1.5,
       "position": [
         660,
-        120
+        140
       ],
       "parameters": {
         "respondWith": "json",
@@ -278,6 +293,17 @@
       ]
     },
     "Validate LLM Output": {
+      "main": [
+        [
+          {
+            "node": "Route & Escalate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route & Escalate": {
       "main": [
         [
           {
