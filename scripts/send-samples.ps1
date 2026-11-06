@@ -17,6 +17,8 @@
   ./scripts/send-samples.ps1
 .EXAMPLE
   ./scripts/send-samples.ps1 -Ids 3,7
+.EXAMPLE
+  ./scripts/send-samples.ps1 -DelaySeconds 0   # no pause (may hit the Groq free-tier rate limit)
 #>
 [CmdletBinding()]
 param(
@@ -25,7 +27,9 @@ param(
   [string]$OutputPath,
   # string[] rather than int[]: via `powershell -File`, "-Ids 1,3" arrives as the single string "1,3",
   # which an int[] parameter would silently turn into 13.
-  [string[]]$Ids
+  [string[]]$Ids,
+  # Pause between requests. Each request makes LLM calls; the Groq free tier allows ~8K tokens/minute.
+  [int]$DelaySeconds = 20
 )
 
 $ErrorActionPreference = 'Stop'
@@ -99,8 +103,11 @@ Write-Host ''
 
 $records = New-Object Collections.Generic.List[object]
 $passed = 0
+$first = $true
 
 foreach ($s in $samples) {
+  if (-not $first -and $DelaySeconds -gt 0) { Start-Sleep -Seconds $DelaySeconds }
+  $first = $false
   # Send the body as UTF-8 bytes: PS 5.1 would otherwise mangle characters such as the em dash in sample 5.
   $body = [Text.Encoding]::UTF8.GetBytes((ConvertTo-PrettyJson ([ordered]@{ source = $s.source; message = $s.message })))
   $sw = [Diagnostics.Stopwatch]::StartNew()
