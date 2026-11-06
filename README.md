@@ -70,6 +70,21 @@ version for each LLM call, and token usage.
 
 </details>
 
+## Screenshots
+
+One execution of sample 7 (an invoice $1,850 above the contract rate), step by step:
+
+| Step | Screenshot |
+|---|---|
+| The workflow (all nodes succeeded) | [01-workflow-overview.png](screenshots/01-workflow-overview.png) |
+| LLM call 1: raw classification, reasoning and token usage | [02-llm-classify-output.png](screenshots/02-llm-classify-output.png) |
+| Validated and grounded classification | [03-validate-output.png](screenshots/03-validate-output.png) |
+| Routing and escalation decision with its reason | [04-route-escalate.png](screenshots/04-route-escalate.png) |
+| LLM call 2: team summary | [05-team-summary.png](screenshots/05-team-summary.png) |
+| Final record | [06-build-record.png](screenshots/06-build-record.png) |
+
+![Workflow overview](screenshots/01-workflow-overview.png)
+
 ## Run it
 
 **Prerequisites:** Docker, and a free Groq API key from [console.groq.com](https://console.groq.com).
